@@ -1,0 +1,78 @@
+library(monocle)
+library(Seurat)
+library(ggplot2)
+library(clustree)
+library(dplyr)
+library(ComplexHeatmap)
+library(RColorBrewer)
+library(multtest)
+library(dplyr)
+library(patchwork)
+library(Rcpp)
+library(harmony)
+library(ggsci)
+library(tidyr)
+library(magrittr)
+library(tibble)
+library(tidydr)
+library(ggsci)
+library(reshape2)
+library(ggpubr)
+library(cowplot)
+library(DoubletFinder)
+
+####Fig.1c####
+markers<-c("CD3E","CD3D","GZMB","NCAM1", "NKG7",
+           "MS4A1","CD79A","CD79B","MZB1","CD19",
+           "CD14","LYZ","CD68","CST3",'C1QC',
+           "COL1A1","COL15A1","DCN",'FAP',"PECAM1",
+           "KRT5","KRT8","KRT19","EPCAM","CLDN4")
+
+sce.sub1$TME_subtype <- factor(sce.sub1$TME_subtype,
+                               levels = c("NK&T cells", "B&Plasma cells",  "Myeloid cells","Stromal cells", "Epithelial cells"))
+Idents(sce.sub1) <- sce.sub1$TME_subtype 
+mycol <- c('#9cd2ed', "#A5D38F", '#c376a7',"#C0937E", "grey")
+names(mycol) <- levels(sce.sub1$TME_subtype)
+
+p <- AverageHeatmap(object = sce.sub1,
+                    markerGene = markers,
+                    group.by = "TME_subtype",
+                    gene.order = markers,
+                    annoCol = TRUE,
+                    myanCol = mycol,
+                    cluster_columns = FALSE)  
+p
+
+#####Fig.1d####
+dfcount = as.data.frame(CNV@assays$RNA@counts)
+
+groupinfo= data.frame(cellId = colnames(dfcount))
+groupinfo$cellType = Idents(CNV) 
+geneInfor=annoGene(rownames(dfcount),"SYMBOL",'human') 
+geneInfor=geneInfor[with(geneInfor, order(chr, start)),c(1,4:6)]
+geneInfor=geneInfor[!duplicated(geneInfor[,1]),]
+
+expFile='expFile.txt'
+write.table(dfcount ,file = expFile,sep = '\t',quote = F)
+groupFiles='groupFiles.txt'
+head(groupinfo)
+write.table(groupinfo,file = groupFiles,sep = '\t',quote = F,col.names = F,row.names = F)
+head(geneInfor)
+geneFile='geneFile.txt'
+write.table(geneInfor,file = geneFile,sep = '\t',quote = F,col.names = F,row.names = F)
+
+
+options(stringsAsFactors = F)
+options(scipen = 100)
+infercnv_obj = CreateInfercnvObject(raw_counts_matrix=expFile,
+                                    annotations_file=groupFiles,
+                                    delim="\t",                
+                                    gene_order_file= geneFile,
+                                    ref_group_names=c("normal")) 
+
+infercnv_obj = infercnv::run(infercnv_obj,write_expr_matrix=TRUE,
+                             cutoff=0.1, 
+                             out_dir='20241212CNV/',                                   
+                             cluster_by_groups=TRUE, 
+                             denoise=TRUE,
+                             HMM=TRUE)
