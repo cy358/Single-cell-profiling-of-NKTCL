@@ -1,0 +1,109 @@
+library(Seurat)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(patchwork)
+library(liana)
+
+Idents(sce) <- sce$cell_type
+
+mp_groups <- unique(sce@meta.data$MP_group)
+
+liana_results_list <- list()
+
+for (mp in mp_groups) {
+  
+  sce_sub <- subset(
+    sce,
+    cells = rownames(sce@meta.data[sce@meta.data$MP_group == mp, ])
+  )
+  
+  liana_res <- liana_wrap(sce_sub)
+  
+  cpdb_res <- liana_res$cellphonedb
+  cpdb_res$MP_group <- mp
+  
+  liana_results_list[[mp]] <- cpdb_res
+}
+
+combined_interaction_data <- bind_rows(liana_results_list)
+
+filtered_data <- combined_interaction_data %>%
+  filter(
+    source %in% c("Malignant", "NK&T", "B&Plasma") &
+      target %in% c("Mono", "Macro", "DC", "Neutro")
+  )
+
+
+interaction_count <- filtered_data %>%
+  count(source, target, MP_group, name = "interaction_count") %>%
+  complete(
+    source,
+    target,
+    MP_group,
+    fill = list(interaction_count = 0)
+  )
+
+interaction_count <- interaction_count %>%
+  mutate(
+    interaction_category = cut(
+      interaction_count,
+      breaks = c(-Inf, 100, 200, Inf),
+      labels = c("Low (0–100)", "Medium (100–200)", "High (>200)")
+    )
+  )
+
+bar_data <- interaction_count %>%
+  group_by(source, MP_group) %>%
+  summarise(
+    total_interactions = sum(interaction_count),
+    .groups = "drop"
+  )
+
+bar_plot <- ggplot(bar_data, aes(x = MP_group, y = total_interactions, fill = MP_group)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~ source, nrow = 1, scales = "free_x") +
+  scale_fill_manual(values = c(
+    "MP1" = "#d4de9c",
+    "MP2" = "#c8c7e1",
+    "MP3" = "#9cd2ed",
+    "MP4" = "#efd2c9"
+  )) +
+  labs(x = NULL, y = "Total Interactions") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    legend.position = "top",
+    panel.grid = element_blank(),
+    strip.text = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA, size = 0.8),
+    axis.line.y.left = element_line(color = "black", size = 0.8),
+    axis.ticks.y.left = element_line(color = "black", size = 0.8)
+  )
+
+heatmap_plot <- ggplot(
+  interaction_count,
+  aes(x = MP_group, y = target, fill = interaction_count)
+) +
+  geom_tile(color = "white", size = 0.5) +
+  facet_grid(cols = vars(source), switch = "x") +
+  scale_fill_gradientn(
+    colors = c("#4b6aa8", "#c4daec", "#efd2c9", "#9d3b62"),
+    limits = c(0, 250),
+    breaks = c(0, 80, 160, 240),
+    name = "Interaction Count"
+  ) +
+  labs(x = "Source Cell Type", y = "Target Cell Type") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_blank(),
+    strip.placement = "outside",
+    strip.background = element_blank(),
+    panel.grid = element_blank(),
+    strip.text.x = element_text(size = 12, face = "bold")
+  )
+
+
+combined_plot <- bar_plot / heatmap_plot + plot_layout(heights = c(1, 3))
+print(combined_plot)
