@@ -30,4 +30,76 @@ p <- ggplot(df, aes(x = Var1, y = Var2, fill = value)) +
   )
 print(p)
 
-###Fig2
+###Fig2e######
+
+library(Seurat)
+library(pheatmap)
+library(RColorBrewer)
+library(readxl)
+
+cell_meta <- sce.data_final8@meta.data
+
+cell_counts <- table(cell_meta$orig.ident, cell_meta$final_layer8)
+relative_abundance <- prop.table(cell_counts, margin = 1)
+relative_abundance_matrix <- t(as.matrix(relative_abundance))
+
+# Z-score scaling across cell types (rows)
+relative_abundance_matrix_scaled <- t(scale(t(relative_abundance_matrix)))
+
+# Clinical annotation
+pat_meta <- read_xlsx("/home/caoyi/NKTCL-atlas/clinical annotation.xlsx")
+pat_meta <- as.data.frame(pat_meta)
+rownames(pat_meta) <- pat_meta[,1]
+pat_meta <- pat_meta[,-1]
+pat_meta <- pat_meta[order(pat_meta$Cluster),]
+
+anno_col <- pat_meta
+relative_abundance_matrix_scaled <- 
+  relative_abundance_matrix_scaled[, rownames(anno_col)]
+
+# Cell annotation
+cell_anno <- read.csv("/home/caoyi/NKTCL-atlas/cell_annotations.csv", row.names = 1)
+
+# Colors
+col_annotation_colors <- list(
+  Cluster = c("MP1" = '#d4de9c', "MP2" = '#c8c7e1', "MP3" ='#9cd2ed', "MP4" ='#efd2c9'),
+  Stage = c("I" = '#c4daec', "II" = '#405993', "III" = '#e29eaf',
+            "IV" = '#9d3b62',"relapse" = "#67A59B"),
+  HLH = c("-" = "#CCEBC5", "+" = "#FBB4AE","NA"="grey"),
+  PINKE = c("0" = '#e0cfda', "1" ="#FED9A6", "2" ="#E5D8BD",
+            "3" = "#C5CA30", "4" = '#d69971',"NA"="grey")
+)
+
+row_annotation_colors <- list(
+  Major_celltype = c("CD45pos" = "#F19294", "CD45neg" = "#C0937E"),
+  Celltype = c("NK" = "#96C3D8", "CD4T" = "#BDA7CB", "CD8T" = "#E45D61",
+               "B" = "#B2DF8A", "Fib" = "#E5D8BD", "Plasma" = '#ece399',
+               "EC" = '#9f8d89', "Neutro" = '#c376a7',
+               "Mono/macro" = "#FBB4AE", "DC" = '#b05545',
+               "Mast" = "lightgrey", "Pericyte" = '#696a6c')
+)
+
+color <- colorRampPalette(c("#219EBC", "white", "firebrick3"))(100)
+
+pheatmap(
+  relative_abundance_matrix_scaled,
+  annotation_col = anno_col,
+  annotation_row = cell_anno,
+  annotation_colors = c(col_annotation_colors, row_annotation_colors),
+  color = color,
+  cluster_cols = FALSE,
+  cluster_rows = FALSE,
+  border_color = NA,
+  scale = "none",
+  cellwidth = 10,
+  cellheight = 10,
+  fontsize_row = 8,
+  fontsize_col = 8,
+  gaps_col = c(
+    sum(anno_col$Cluster == "MP1"),
+    sum(anno_col$Cluster %in% c("MP1","MP2")),
+    sum(anno_col$Cluster %in% c("MP1","MP2","MP3"))
+  ),
+  main = "Tumor MP Microenvironment"
+)
+
